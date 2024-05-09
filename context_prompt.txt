@@ -1,0 +1,448 @@
+Personal Finance Management Application
+I have divided my money flow in 3 ways.
+1. Income
+2. Expense
+3. Investment
+
+To record each of these I am using Excel Workbook. So I have,
+1. An Excel Workbook called "income.xlsx" where I record all my salaried and side income row wise.
+2. An Excel Workbook called "expense.xlsx" where I record every single expense I make on every single day row wise.
+3. An Excel Workbook called "investment.xlsx" where I record every single investments I have made row wise.
+
+In each Excel Workbook, I have multiple sheets. Here is the breakdown.
+- income.xlsx Workbook
+    1. incomes
+    2. categories
+    3. events
+    4. salary_hike
+
+- expense.xlsx Workbook contains 3 sheets
+    1. expenses
+    2. categories
+    3. sub_categories
+
+- investment.xlsx Workbook contains 2 sheets
+    1. investments
+    2. asset_classes
+
+I have created a python project which will transfer data from an excel sheet to a database. For now I have created the project for capturing "expense". Once I complete this, I will start making the similar for "income" and "investment". Here is the folder structure and code base for that.
+
+batch/
+├── expense/
+│   ├── database/
+│   │   ├── __init__.py
+│   │   ├── connection.py
+│   │   ├── models.py
+│   │   ├── queries.py
+│   │   └── schemas.py
+│   ├── excel/
+│   │   ├── __init__.py
+│   │   ├── constants.py
+│   │   ├── schemas.py
+│   │   └── utils.py
+│   ├── tests/
+│   │   ├── unit/
+│   │   │   ├── database/
+│   │   │   │   ├── test_models.py
+│   │   │   │   ├── test_queries.py
+│   │   │   │   ├── test_schemas.py
+│   │   │   │   └── test_connection.py
+│   │   │   └── excel/
+│   │   │       ├── test_utils.py
+│   │   │       └── test_schemas.py
+│   │   ├── integration/
+│   │   │   ├── test_database_integration.py
+│   │   │   └── test_excel_integration.py
+│   │   └── end_to_end/
+│   │       └── test_end_to_end.py
+│   └── __init__.py
+├── income/
+│   └── __init__.py
+├── investment/
+│   └── __init__.py
+├── main.py
+├── .env
+├── workflow.bat
+└── requirements.txt
+
+database/__init__.py Code
+=========================
+from .connection import engine
+from . import models
+
+def create_database_tables():
+    models.Base.metadata.create_all(bind=engine)
+
+create_database_tables()
+
+database/connection.py Code
+===========================
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:admin@localhost/expense"
+# SQLALCHEMY_DATABASE_URL = "sqlite:///./expense.db"
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+database/models.py Code
+=======================
+from sqlalchemy import Column, Integer, String, Date, DECIMAL, ForeignKey, Text
+from sqlalchemy.orm import relationship
+from .connection import Base
+
+
+class Category(Base):
+    __tablename__ = 'category'
+
+    id = Column(Integer, primary_key=True, index=True)
+    category_name = Column(String(255), unique=True, nullable=False)
+
+    sub_categories = relationship("SubCategory", back_populates="category")
+    expenses = relationship("Expense", back_populates="category")
+
+
+class SubCategory(Base):
+    __tablename__ = 'sub_category'
+
+    id = Column(Integer, primary_key=True, index=True)
+    sub_category_name = Column(String(255), nullable=False)
+    category_id = Column(Integer, ForeignKey('category.id'))
+
+    category = relationship("Category", back_populates="sub_categories")
+    expenses = relationship("Expense", back_populates="sub_category")
+
+
+class Expense(Base):
+    __tablename__ = 'expense'
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False)
+    category_id = Column(Integer, ForeignKey('category.id', ondelete='SET NULL'))
+    sub_category_id = Column(Integer, ForeignKey('sub_category.id', ondelete='SET NULL'))
+    product_or_service = Column(String(50), nullable=False)
+    product_or_service_name = Column(String(255), nullable=False)
+    quantity_or_duration = Column(String(50), nullable=False)
+    price = Column(DECIMAL(10, 2), nullable=False)
+    need_or_want = Column(String(50), nullable=False)
+    details = Column(Text)
+    
+    category = relationship("Category", back_populates="expenses")
+    sub_category = relationship("SubCategory", back_populates="expenses")
+
+
+database/queries.py Code
+========================
+from sqlalchemy.orm import Session
+from . import models, schemas
+
+def insert_category(db: Session, category: schemas.CategoryCreateRequest):
+    db_category = models.Category(**category.model_dump())
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def insert_sub_category(db: Session, sub_category: schemas.SubCategoryCreateRequest):
+    category_name = sub_category.category_name
+    category = get_category_by_name(db, category_name)
+    if category:
+        sub_category_data = sub_category.model_dump()
+        sub_category_data["category_id"] = category.id
+        del sub_category_data['category_name']
+        db_sub_category = models.SubCategory(**sub_category_data)
+        db.add(db_sub_category)
+        db.commit()
+        db.refresh(db_sub_category)
+        return db_sub_category
+    else:
+        print(f"Category '{category_name}' does not exist.")
+        return(None)
+
+
+def insert_expense(db: Session, expense: schemas.ExpenseCreateRequest):
+    category_name = expense.category_name
+    sub_category_name = expense.sub_category_name
+    category = get_category_by_name(db, category_name)
+    sub_category = get_sub_category_by_name(db, sub_category_name, category_name)
+    if(category and sub_category):
+        if(category.id == sub_category.category_id):
+            expense_data = expense.model_dump()
+            expense_data['category_id'] = category.id
+            expense_data['sub_category_id'] = sub_category.id
+            del expense_data['category_name']
+            del expense_data['sub_category_name']
+            db_expense = models.Expense(**expense_data)
+            db.add(db_expense)
+            db.commit()
+            db.refresh(db_expense)
+            return db_expense 
+        else:
+            print(f"Sub Category '{sub_category_name}' does not belong to Category '{category_name}'.")
+    else:
+        if(category != None and sub_category == None):
+            print(f"Category '{category_name}' does not exist.")
+        elif(category == None and sub_category != None):
+            print(f"Category '{sub_category_name}' does not exist.")
+        else:
+            print(f"Category '{category_name}' and Sub Category '{sub_category_name}' does not exist.")
+
+
+def get_sub_category_by_name(db: Session, sub_category_name: str, category_name: str):
+    category = db.query(models.Category).filter(models.Category.category_name == category_name).first()
+    if(category):
+        return db.query(models.SubCategory).filter(models.SubCategory.category_id == category.id
+                                                   and models.SubCategory.sub_category_name == sub_category_name).first()
+    else:
+        return(None)
+
+def get_category_by_name(db: Session, category_name: str):
+    return db.query(models.Category).filter(models.Category.category_name == category_name).first()
+
+
+
+database/schemas.py Code
+========================
+from pydantic import BaseModel
+from typing import Optional
+from datetime import date as date_type
+
+
+class CategoryBase(BaseModel):
+    category_name: str
+
+class CategoryCreateRequest(CategoryBase):
+    pass
+
+
+class SubCategoryBase(BaseModel):
+    sub_category_name: str
+
+class SubCategoryCreateRequest(SubCategoryBase):
+    category_name: str
+
+
+class ExpenseBase(BaseModel):
+    date: date_type
+    product_or_service: str
+    product_or_service_name: str
+    quantity_or_duration: str
+    price: float
+    need_or_want: str
+    details: Optional[str]
+
+class ExpenseCreateRequest(ExpenseBase):
+    category_name: str
+    sub_category_name: str
+
+excel/constants.py Code
+========================
+from enum import Enum
+from pathlib import Path
+
+class Constants(Enum):
+    # FILE_PATH = Path.cwd() / "data/expense.xlsx"
+    FILE_PATH = "./excel/data/expense.xlsx"
+    WORKBOOK_NAME = "expense"
+    EXPENSE_SHEET_NAME = "expense"
+    CATEGORY_SHEET_NAME = "category"
+    SUB_CATEGORY_SHEET_NAME = "sub_category"
+
+excel/schemas.py Code
+=====================
+from pydantic import BaseModel, Field, field_validator
+from datetime import date
+from enum import Enum
+from decimal import Decimal
+from typing import Annotated, List
+
+class ProductOrService(str, Enum):
+    Product = "Product"
+    Service = "Service"
+
+class NeedOrWant(str, Enum):
+    Need = "Need"
+    Want = "Want"
+
+TitleCase = Annotated[str, Field(min_length=1, pattern='^[A-Z][a-z]+(?:\s[A-Z][a-z]+)*$')]
+
+class Expense(BaseModel):
+    date: date
+    category_name: TitleCase
+    sub_category_name: TitleCase
+    product_or_service: ProductOrService
+    product_or_service_name: TitleCase
+    quantity_or_duration: str # Separate Validator required for this
+    price: Annotated[Decimal, Field(gt=0)]
+    need_or_want: NeedOrWant
+    details: str
+
+    @field_validator('date')
+    def check_date_not_future(cls, value):
+        if value > date.today():
+            raise ValueError("Date cannot be in the future")
+        return value
+
+    @field_validator('category_name', 'sub_category_name', 'product_or_service_name')
+    def check_title_case(cls, value):
+        if value.istitle() is False:
+            raise ValueError("Value must be in title case")
+        return value
+    
+    # 'quantity_or_duration'
+    # Separate Validator required for this field, because data is in format of 1 Unit/ 1 Gram etc
+
+class Category(BaseModel):
+    category_name: TitleCase
+
+    @field_validator('category_name')
+    def name_in_title_case(cls, value):
+        if value.istitle() is False:
+            raise ValueError("Name must be in title case")
+        return value
+
+class SubCategory(BaseModel):
+    category_name: TitleCase
+    sub_category_name: TitleCase
+
+    @field_validator('sub_category_name', 'sub_category_name')
+    def category_and_name_in_title_case(cls, value):
+        if value.istitle() is False:
+            raise ValueError("Category and name must be in title case")
+        return value
+
+excel/utils.py Code
+===================
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException, SheetTitleException
+
+from pydantic import ValidationError
+
+from typing import List
+from pathlib import Path
+
+from .constants import Constants
+from .schemas import Category, SubCategory, Expense
+
+
+def get_category_sheet_data() -> List[Category]:
+    data = []
+    wb = load_workbook(filename=Constants.FILE_PATH.value, read_only=True)
+    sheet = wb[Constants.CATEGORY_SHEET_NAME.value]
+    for row in sheet.iter_rows(values_only=True, min_row=2):
+        category_data = {"category_name": row[0]}
+        category = Category(**category_data)
+        data.append(category)
+    return data
+
+
+def get_sub_category_sheet_data() -> List[SubCategory]:
+    data = []
+    wb = load_workbook(filename=Constants.FILE_PATH.value, read_only=True)
+    sheet = wb[Constants.SUB_CATEGORY_SHEET_NAME.value]
+    for row in sheet.iter_rows(values_only=True, min_row=2):
+        sub_category_data = {
+            "category_name": row[0],
+            "sub_category_name": row[1]
+        }
+        sub_category = SubCategory(**sub_category_data)
+        data.append(sub_category)
+    return data
+
+
+def get_expense_sheet_data() -> List[Expense]:
+    data = []
+    wb = load_workbook(filename=Constants.FILE_PATH.value, read_only=True)
+    sheet = wb[Constants.EXPENSE_SHEET_NAME.value]
+    for row in sheet.iter_rows(values_only=True, min_row=2):
+        expense_data = {
+            "date": row[0],
+            "category_name": row[1],
+            "sub_category_name": row[2],
+            "product_or_service": row[3],
+            "product_or_service_name": row[4],
+            "quantity_or_duration": row[5],
+            "price": row[6],
+            "need_or_want": row[7],
+            "details": row[8]
+        }
+        
+        try:
+            expense = Expense(**expense_data)
+        except ValidationError as exc:
+            print(repr(exc.errors()))
+            continue
+        data.append(expense)
+    return data
+
+
+if(__name__=="__main__"):
+    pass
+
+main.py Code
+============
+from database.connection import SessionLocal
+from database.queries import insert_category, insert_sub_category, insert_expense
+from excel.utils import get_category_sheet_data, get_sub_category_sheet_data, get_expense_sheet_data
+
+def insert_categories():
+    db = SessionLocal()
+    categories = get_category_sheet_data()
+    for category in categories:
+        insert_category(db, category)
+    db.close()
+
+
+def insert_sub_categories():
+    db = SessionLocal()
+    sub_categories = get_sub_category_sheet_data()
+    for sub_category in sub_categories:
+        insert_sub_category(db, sub_category)    
+    db.close()
+
+
+def insert_expenses():
+    db = SessionLocal()
+    expenses = get_expense_sheet_data()
+    for expense in expenses:
+        insert_expense(db, expense)
+    db.close()
+
+
+if __name__ == "__main__":
+    insert_categories()
+    insert_sub_categories()
+    insert_expenses()
+
+
+
+## EXCEPTION HANDLING
+I have written all the codes. Now I want to perform exception and error handling in my project file by file. I want your help in that. 
+So here is how it will go. I will provide you the code of one of the file/function in each prompt and your job is to identify what could be possible places where error could occur.Make sure you add multiple except blocks with least specific to more general exception. Also take advantage of having multiple nested try and except blocks to capture the error even better way.
+
+Also I am thinking to use the log file and planning to use python's built-in logging and traceback module to log them to a particular log.txt file. 
+
+
+## TESTING
+I want to focus on how to write test for the application. I have included folders for below 3 types of testing
+Unit Testing
+Integration Testing
+End-to-End Testing (E2E)
+
+I am planning to use python's built-in library "unittest" and "pytest" framework.
+Is using one is sufficient ? or should I use both. If I need to choose 1, which one should it be.
+
+
+All the files are empty for now in the testing folder. First tell me if the testing folder structure is correct or not.
+Once the folder structure is finalized, I need your help to write code in that step by step.
+
+Once we have all the foundation built, I want to focus further on below 3 types of testing.
+But I am also considering on below 3 types as well.
+Database Testing
+Performance Testing
+Security Testing
