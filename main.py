@@ -1,6 +1,6 @@
-from .database.connection import SessionLocal
-from .database.queries import insert_category, insert_sub_category, insert_expense
-from .excel.utils import get_category_sheet_data, get_sub_category_sheet_data, get_expense_sheet_data
+from database.connection import SessionLocal
+from database.queries import insert_category, insert_sub_category, insert_expense
+from excel.utils import get_category_sheet_data, get_sub_category_sheet_data, get_expense_sheet_data
 
 def insert_categories():
     db = SessionLocal()
@@ -26,7 +26,7 @@ def insert_expenses():
     db.close()
 
 
-def main():
+if __name__ == "__main__":
     insert_categories()
     insert_sub_categories()
     insert_expenses()
