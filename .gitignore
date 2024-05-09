@@ -1,4 +1,3 @@
-batch/.env
-archive/batch/config/env/.env
+.env
 */__pycache__/*
 */venv/*
