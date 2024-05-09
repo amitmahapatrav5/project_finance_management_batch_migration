@@ -13,15 +13,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def get_category_sheet_data() -> List[Category]:
+def get_category_sheet_data(file_path = Constants.FILE_PATH.value) -> List[Category]:
     data = []
     try:
-        wb = load_workbook(filename=Constants.FILE_PATH.value, read_only=True)
+        wb = load_workbook(filename=file_path, read_only=True)
     except FileNotFoundError as e:
-        logger.error(f"File not found: {Constants.FILE_PATH.value}")
+        logger.error(f"File not found: {file_path}")
         raise
     except InvalidFileException as e:
-        logger.error(f"Invalid file format: {Constants.FILE_PATH.value}")
+        logger.error(f"Invalid file format: {file_path}")
         raise
 
     try:
@@ -39,15 +39,15 @@ def get_category_sheet_data() -> List[Category]:
             logger.exception(f"There is an issue with the Category {row[0]}")
     return data
 
-def get_sub_category_sheet_data() -> List[SubCategory]:
+def get_sub_category_sheet_data(file_path = Constants.FILE_PATH.value) -> List[SubCategory]:
     data = []
     try:
-        wb = load_workbook(filename=Constants.FILE_PATH.value, read_only=True)
+        wb = load_workbook(filename=file_path, read_only=True)
     except FileNotFoundError as e:
-        logger.error(f"File not found: {Constants.FILE_PATH.value}")
+        logger.error(f"File not found: {file_path}")
         raise
     except InvalidFileException as e:
-        logger.error(f"Invalid file format: {Constants.FILE_PATH.value}")
+        logger.error(f"Invalid file format: {file_path}")
         raise
 
     try:
@@ -68,15 +68,15 @@ def get_sub_category_sheet_data() -> List[SubCategory]:
             logger.exception(f"There is an issue with the Sub Category {row[1]} of Category {row[0]}")
     return data
 
-def get_expense_sheet_data() -> List[Expense]:
+def get_expense_sheet_data(file_path = Constants.FILE_PATH.value) -> List[Expense]:
     data = []
     try:
-        wb = load_workbook(filename=Constants.FILE_PATH.value, read_only=True)
+        wb = load_workbook(filename=file_path, read_only=True)
     except FileNotFoundError as e:
-        logger.error(f"File not found: {Constants.FILE_PATH.value}")
+        logger.error(f"File not found: {file_path}")
         raise
     except InvalidFileException as e:
-        logger.error(f"Invalid file format: {Constants.FILE_PATH.value}")
+        logger.error(f"Invalid file format: {file_path}")
         raise
 
     try:

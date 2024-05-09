@@ -2,6 +2,9 @@ from database.connection import SessionLocal
 from database.queries import insert_category, insert_sub_category, insert_expense
 from excel.utils import get_category_sheet_data, get_sub_category_sheet_data, get_expense_sheet_data
 
+import logging
+logging.basicConfig(filename="app.log", level=logging.ERROR)
+
 def insert_categories():
     db = SessionLocal()
     categories = get_category_sheet_data()
